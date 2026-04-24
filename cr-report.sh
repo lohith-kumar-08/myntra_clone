@@ -9,14 +9,12 @@ echo ""
 # CSV Header
 echo "CR_ID,Title,Status,Approved_By,Approval_Date,PR,Commit_SHA,Merged_Date,Deployed_At,Deployment_Approved_By" > $OUTPUT
 
-# Fetch all issues with CR labels
-gh issue list \
-  --repo $REPO \
-  --label "CR:New,CR:Approved,CR:In Progress,CR:Done,CR:Deployed,CR:Rejected" \
-  --state all \
-  --limit 500 \
-  --json number,title,labels,url \
-  | jq -c '.[]' | while read -r issue; do
+# Fetch issues for each CR label separately and merge
+ISSUES=$(for label in "CR:New" "CR:Approved" "CR:In Progress" "CR:Done" "CR:Deployed" "CR:Rejected"; do
+  gh issue list --repo $REPO --label "$label" --state all --limit 500 --json number,title,labels,url 2>/dev/null
+done | jq -s '[.[][] ] | unique_by(.number) | .[]' -c)
+
+echo "$ISSUES" | while read -r issue; do
 
   NUMBER=$(echo $issue | jq -r '.number')
   TITLE=$(echo $issue | jq -r '.title')
