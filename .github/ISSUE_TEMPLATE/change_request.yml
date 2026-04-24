@@ -1,13 +1,10 @@
 name: Change Request (CR)
 description: Raise a formal change request for production
-title: "[CR] "
 labels: ["CR:New"]
 body:
   - type: markdown
     attributes:
-      value: |
-        ## Change Request
-        Fill in all fields. This issue will be reviewed and approved before any development begins.
+      value: "## Change Request"
 
   - type: input
     id: requested_by
@@ -55,9 +52,4 @@ body:
       required: true
 
 
-  - type: input
-    id: deployment_date
-    attributes:
-      label: Target Deployment Date
-      placeholder: YYYY-MM-DD
 
