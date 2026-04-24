@@ -28,7 +28,15 @@ jobs:
             const now = new Date().toISOString().split('T')[0];
 
             if (!AUTHORIZED_USERS.includes(actor)) {
-              // Unauthorized — remove label and warn
+              // Get all current labels before removing the unauthorized one
+              const issueData = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              const currentLabels = issueData.data.labels.map(l => l.name);
+
+              // Remove the unauthorized label
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -36,11 +44,25 @@ jobs:
                 name: label
               });
 
+              // Restore previous CR status label if it was removed
+              const crStatusLabels = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed', 'CR:Rejected'];
+              const previousLabel = currentLabels.find(l => crStatusLabels.includes(l) && l !== label);
+
+              if (!previousLabel) {
+                // No previous CR label found — restore CR:New as default
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: ['CR:New']
+                });
+              }
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⛔ @${actor} you are not authorized to approve or reject Change Requests.\n\nThe \`${label}\` label has been removed.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
+                body: `⛔ @${actor} you are not authorized to approve or reject Change Requests.\n\nThe \`${label}\` label has been removed and status restored to \`${previousLabel || 'CR:New'}\`.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
               });
 
             } else if (label === 'CR:Approved') {
