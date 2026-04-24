@@ -8,6 +8,7 @@ import Bag from './components/Bag.jsx'
 import {Provider} from "react-redux"
 import myntrasstore from './store/index.js'
 import Home from './components/Home.jsx'
+import CRReport from './components/CRReport.jsx'
 const router=createBrowserRouter([
   {
     path:'/',
@@ -19,6 +20,9 @@ const router=createBrowserRouter([
       },{
       path:'/bag',
       element:<Bag/>
+    },{
+      path:'/cr-report',
+      element:<CRReport/>
     }]
     }
 

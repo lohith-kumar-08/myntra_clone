@@ -1,50 +1,78 @@
 #!/bin/bash
+# CR Report Generator — uses GitHub REST API directly
+# Usage: bash cr-report.sh <GITHUB_TOKEN>
+# Example: bash cr-report.sh ghp_xxxxxxxxxxxx
 
 REPO="lohith-kumar-08/myntra_clone"
+TOKEN="${1:-$GITHUB_TOKEN}"
 OUTPUT="cr-report-$(date +%Y-%m-%d).csv"
 
+if [ -z "$TOKEN" ]; then
+  echo "Error: GitHub token required."
+  echo "Usage: bash cr-report.sh <GITHUB_TOKEN>"
+  exit 1
+fi
+
+HEADERS='-H "Authorization: Bearer '"$TOKEN"'" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28"'
+
 echo "Generating CR report for $REPO..."
-echo ""
 
 # CSV Header
-echo "CR_ID,Title,Status,Approved_By,Approval_Date,PR,Commit_SHA,Merged_Date,Deployed_At,Deployment_Approved_By" > $OUTPUT
+echo "CR_ID,Title,Status,Created_At,Approved_By,Approval_Date,PR,Commit_SHA,Merged_Date,Deployed_At,Deployment_Approved_By" > $OUTPUT
 
-# Fetch issues for each CR label separately and merge
-ISSUES=$(for label in "CR:New" "CR:Approved" "CR:In Progress" "CR:Done" "CR:Deployed" "CR:Rejected"; do
-  gh issue list --repo $REPO --label "$label" --state all --limit 500 --json number,title,labels,url 2>/dev/null
-done | jq -s '[.[][] ] | unique_by(.number) | .[]' -c)
+# Fetch all issues (paginated)
+PAGE=1
+ALL_ISSUES="[]"
+while true; do
+  RESPONSE=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/$REPO/issues?state=all&per_page=100&page=$PAGE")
 
-echo "$ISSUES" | while read -r issue; do
+  COUNT=$(echo "$RESPONSE" | jq 'length')
+  if [ "$COUNT" -eq 0 ]; then break; fi
 
-  NUMBER=$(echo $issue | jq -r '.number')
-  TITLE=$(echo $issue | jq -r '.title')
-  LABELS=$(echo $issue | jq -r '[.labels[].name] | join("|")')
-
-  # Determine status from labels
-  STATUS=""
-  if echo "$LABELS" | grep -q "CR:Deployed"; then STATUS="CR:Deployed"
-  elif echo "$LABELS" | grep -q "CR:Done"; then STATUS="CR:Done"
-  elif echo "$LABELS" | grep -q "CR:In Progress"; then STATUS="CR:In Progress"
-  elif echo "$LABELS" | grep -q "CR:Approved"; then STATUS="CR:Approved"
-  elif echo "$LABELS" | grep -q "CR:Rejected"; then STATUS="CR:Rejected"
-  elif echo "$LABELS" | grep -q "CR:New"; then STATUS="CR:New"
-  fi
-
-  # Extract fields from comments
-  COMMENTS=$(gh issue view $NUMBER --repo $REPO --json comments -q '.comments[].body')
-
-  APPROVED_BY=$(echo "$COMMENTS" | grep "Approved By" | sed 's/.*@//' | tr -d '|' | xargs)
-  APPROVAL_DATE=$(echo "$COMMENTS" | grep "Approval Date" | awk '{print $NF}' | tr -d '|' | xargs)
-  PR=$(echo "$COMMENTS" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
-  COMMIT_SHA=$(echo "$COMMENTS" | grep "Commit SHA" | grep -oE '[a-f0-9]{40}')
-  MERGED_DATE=$(echo "$COMMENTS" | grep "Merge Date" | awk '{print $NF}' | tr -d '|' | xargs)
-  DEPLOYED_AT=$(echo "$COMMENTS" | grep "Deployed At" | awk '{print $NF}' | tr -d '|' | xargs)
-  DEPLOY_APPROVED_BY=$(echo "$COMMENTS" | grep "Deployment Approved By" | sed 's/.*@//' | tr -d '|' | xargs)
-
-  echo "#${NUMBER},\"${TITLE}\",${STATUS},${APPROVED_BY},${APPROVAL_DATE},${PR:+#$PR},${COMMIT_SHA},${MERGED_DATE},${DEPLOYED_AT},${DEPLOY_APPROVED_BY}" >> $OUTPUT
-
+  ALL_ISSUES=$(echo "$ALL_ISSUES $RESPONSE" | jq -s 'add')
+  PAGE=$((PAGE + 1))
 done
 
-echo "Report saved to: $OUTPUT"
+# Filter CR issues (no PRs, must have a CR label)
+CR_ISSUES=$(echo "$ALL_ISSUES" | jq -c '[.[] | select(.pull_request == null) | select(.labels[].name | startswith("CR:"))] | unique_by(.number) | .[]')
+
+echo "$CR_ISSUES" | while read -r issue; do
+  NUMBER=$(echo "$issue" | jq -r '.number')
+  TITLE=$(echo "$issue" | jq -r '.title')
+  LABELS=$(echo "$issue" | jq -r '[.labels[].name] | join("|")')
+  CREATED=$(echo "$issue" | jq -r '.created_at' | cut -c1-10)
+  URL=$(echo "$issue" | jq -r '.html_url')
+
+  # Determine status
+  STATUS="-"
+  for S in "CR:Deployed" "CR:Done" "CR:In Progress" "CR:Approved" "CR:Hold" "CR:Rejected" "CR:New"; do
+    if echo "$LABELS" | grep -q "$S"; then STATUS="$S"; break; fi
+  done
+
+  # Fetch comments via API
+  COMMENTS=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/$REPO/issues/$NUMBER/comments?per_page=100" \
+    | jq -r '.[].body' | tr '\n' ' ')
+
+  APPROVED_BY=$(echo "$COMMENTS" | grep -o 'Approved By.*' | head -1 | sed 's/.*@//' | awk '{print $1}' | tr -d '|')
+  APPROVAL_DATE=$(echo "$COMMENTS" | grep -o 'Approval Date.*' | head -1 | awk '{print $NF}' | tr -d '|')
+  PR=$(echo "$COMMENTS" | grep -oE 'PR.*#[0-9]+' | grep -oE '#[0-9]+' | head -1)
+  COMMIT=$(echo "$COMMENTS" | grep -oE '[a-f0-9]{40}' | head -1 | cut -c1-7)
+  MERGED=$(echo "$COMMENTS" | grep -o 'Merge Date.*' | head -1 | awk '{print $NF}' | tr -d '|')
+  DEPLOYED=$(echo "$COMMENTS" | grep -o 'Deployed At.*' | head -1 | awk '{print $NF}' | tr -d '|')
+  DEPLOY_BY=$(echo "$COMMENTS" | grep -o 'Deployment Approved By.*' | head -1 | sed 's/.*@//' | awk '{print $1}' | tr -d '|')
+
+  echo "#${NUMBER},\"${TITLE}\",${STATUS},${CREATED},${APPROVED_BY:-"-"},${APPROVAL_DATE:-"-"},${PR:-"-"},${COMMIT:-"-"},${MERGED:-"-"},${DEPLOYED:-"-"},${DEPLOY_BY:-"-"}" >> $OUTPUT
+done
+
 echo ""
-cat $OUTPUT | column -t -s ','
+echo "Report saved: $OUTPUT"
+echo ""
+column -t -s ',' $OUTPUT

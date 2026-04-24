@@ -42,6 +42,10 @@ const Header=()=>{
                 <span className="action_name">Bag</span>
                 <span className="bag-item-count">{bag.length}</span>
             </Link>
+
+            <Link className="action_container" to="/cr-report">
+                <span className="action_name" style={{color:"#2EA44F", fontWeight:"600"}}>CR Report</span>
+            </Link>
         </div>
     </header>
     </>
