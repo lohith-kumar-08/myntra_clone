@@ -27,6 +27,7 @@ body:
         - Source:Internal
         - Source:Email
         - Source:WhatsApp
+        - Source:Call
     validations:
       required: true
 
@@ -38,17 +39,6 @@ body:
         - Type:Bug
         - Type:Enhancement
         - Type:DataFix
-    validations:
-      required: true
-
-  - type: dropdown
-    id: impact
-    attributes:
-      label: Impact
-      options:
-        - Low
-        - Medium
-        - High
     validations:
       required: true
 
@@ -69,51 +59,3 @@ body:
       placeholder: Business reason for this change...
     validations:
       required: true
-
-  - type: textarea
-    id: rollback
-    attributes:
-      label: Rollback Plan
-      description: How do we revert this change if something goes wrong?
-      placeholder: Steps to rollback if needed...
-    validations:
-      required: true
-
-  - type: markdown
-    attributes:
-      value: |
-        ---
-        ## Approval Section
-        > To be filled by the approver after review
-
-  - type: textarea
-    id: approval
-    attributes:
-      label: CR Approval
-      description: Approver to fill this section
-      value: |
-        - Approved By:
-        - Approval Date:
-        - Comments:
-    validations:
-      required: false
-
-  - type: markdown
-    attributes:
-      value: |
-        ---
-        ## Deployment Approval
-        > To be filled after deployment approval is granted
-
-  - type: textarea
-    id: deployment_approval
-    attributes:
-      label: Deployment Approval
-      description: To be filled when deployment is approved
-      value: |
-        - Approved By:
-        - Approval Date:
-        - Deployment ID:
-        - Comments:
-    validations:
-      required: false
