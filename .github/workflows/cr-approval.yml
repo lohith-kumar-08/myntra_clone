@@ -19,7 +19,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const AUTHORIZED_USERS = ['lohith-kumar-08'];
+            const AUTHORIZED_USERS = ['lohith-kumar-09'];
 
             const actor = context.payload.sender.login;
             const label = context.payload.label.name;
