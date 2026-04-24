@@ -144,8 +144,22 @@ jobs:
               });
             }
 
+            // ── Remove all other CR labels — only 1 status allowed at a time ──
+            for (const l of CR_LABELS) {
+              if (l !== label) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: l
+                  });
+                } catch (e) {}
+              }
+            }
+
             // ── CR:Hold ──
-            else if (label === 'CR:Hold') {
+            if (label === 'CR:Hold') {
               try {
                 if (previousCRLabel) {
                   await github.rest.issues.removeLabel({
@@ -166,7 +180,7 @@ jobs:
             }
 
             // ── CR:Rejected ──
-            else if (label === 'CR:Rejected') {
+            if (label === 'CR:Rejected') {
               for (const l of ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Hold']) {
                 try {
                   await github.rest.issues.removeLabel({
