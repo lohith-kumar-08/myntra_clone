@@ -1,0 +1,81 @@
+name: CR In Progress
+
+on:
+  pull_request:
+    types: [opened, reopened]
+    branches:
+      - main
+
+jobs:
+  mark-cr-in-progress:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Extract linked issue and mark CR:In Progress
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prBody = context.payload.pull_request.body || '';
+            const prNumber = context.payload.pull_request.number;
+            const prUrl = context.payload.pull_request.html_url;
+            const actor = context.payload.pull_request.user.login;
+            const now = new Date().toISOString().split('T')[0];
+
+            // Extract issue number from PR body — supports Closes #N, Fixes #N, Resolves #N
+            const match = prBody.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+
+            if (!match) {
+              console.log('No linked issue found in PR body. Skipping.');
+              return;
+            }
+
+            const issueNumber = parseInt(match[1]);
+
+            // Get the issue to check its labels
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+
+            const labels = issue.data.labels.map(l => l.name);
+
+            if (!labels.includes('CR:Approved')) {
+              // Post warning on PR
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `⛔ **Blocked** — Linked issue #${issueNumber} does not have \`CR:Approved\` status.\n\nA PR cannot be raised without an approved Change Request.\n\nPlease get CR #${issueNumber} approved before proceeding.`
+              });
+              return;
+            }
+
+            // Remove CR:Approved, add CR:In Progress
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'CR:Approved'
+              });
+            } catch (e) {}
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['CR:In Progress']
+            });
+
+            // Post comment on the issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `🔧 **Development Started**\n\n| Field | Value |\n|-------|-------|\n| **PR** | #${prNumber} — ${prUrl} |\n| **Developer** | @${actor} |\n| **Date** | ${now} |\n\nStatus changed to \`CR:In Progress\`.`
+            });
