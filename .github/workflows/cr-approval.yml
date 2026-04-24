@@ -2,7 +2,7 @@ name: CR Approval Control
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled, unlabeled]
 
 jobs:
   handle-cr-label:
@@ -28,6 +28,50 @@ jobs:
 
             // Only handle CR labels
             if (!CR_LABELS.includes(label)) return;
+
+            // ── Block unauthorized removal of CR:Approved, CR:Done, CR:Deployed ──
+            const protectedLabels = ['CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed'];
+            if (context.payload.action === 'unlabeled' && protectedLabels.includes(label)) {
+              if (!AUTHORIZED_USERS.includes(actor)) {
+                // Re-add the removed label
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: [label]
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⛔ @${actor} you are not authorized to remove the \`${label}\` label.\n\nThe label has been restored.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
+                });
+                return;
+              }
+              // Authorized user removing a protected label — check it's not a backward transition
+              const newCurrentLabels = issueData.data.labels.map(l => l.name).filter(l => l !== label);
+              const newCRLabel = newCurrentLabels.find(l => CR_LABELS.includes(l));
+              const removedIndex = FORWARD_ORDER.indexOf(label);
+              const newLabelIndex = FORWARD_ORDER.indexOf(newCRLabel);
+              if (newCRLabel && newLabelIndex < removedIndex) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: [label]
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⛔ Backward transition not allowed: cannot go from \`${label}\` to \`${newCRLabel}\`.\n\nStatus restored to \`${label}\`.\n\nTo pause a CR at any stage, use \`CR:Hold\`.`
+                });
+              }
+              return;
+            }
+
+            // Skip further processing for unlabeled events
+            if (context.payload.action === 'unlabeled') return;
 
             // Get current issue labels
             const issueData = await github.rest.issues.get({
