@@ -1,0 +1,119 @@
+name: Change Request (CR)
+description: Raise a formal change request for production
+title: "[CR] "
+labels: ["CR:New"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Change Request
+        Fill in all fields. This issue will be reviewed and approved before any development begins.
+
+  - type: input
+    id: requested_by
+    attributes:
+      label: Requested By
+      description: Full name of the person requesting this change
+      placeholder: e.g. Lohith Kumar
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      description: How was this request received?
+      options:
+        - Source:Internal
+        - Source:Email
+        - Source:WhatsApp
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of Change
+      options:
+        - Type:Bug
+        - Type:Enhancement
+        - Type:DataFix
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be changed and why?
+      placeholder: Describe the change in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Business Justification
+      description: Why is this change needed? What problem does it solve?
+      placeholder: Business reason for this change...
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback Plan
+      description: How do we revert this change if something goes wrong?
+      placeholder: Steps to rollback if needed...
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Approval Section
+        > To be filled by the approver after review
+
+  - type: textarea
+    id: approval
+    attributes:
+      label: CR Approval
+      description: Approver to fill this section
+      value: |
+        - Approved By:
+        - Approval Date:
+        - Comments:
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Deployment Approval
+        > To be filled after deployment approval is granted
+
+  - type: textarea
+    id: deployment_approval
+    attributes:
+      label: Deployment Approval
+      description: To be filled when deployment is approved
+      value: |
+        - Approved By:
+        - Approval Date:
+        - Deployment ID:
+        - Comments:
+    validations:
+      required: false
