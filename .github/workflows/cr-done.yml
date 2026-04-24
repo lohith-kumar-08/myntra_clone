@@ -1,0 +1,64 @@
+name: CR Done on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - master
+      - main
+
+jobs:
+  mark-cr-done:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Extract linked issue and mark CR:Done
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prBody = context.payload.pull_request.body || '';
+            const prNumber = context.payload.pull_request.number;
+            const prUrl = context.payload.pull_request.html_url;
+            const actor = context.payload.pull_request.merged_by.login;
+            const commitSha = context.payload.pull_request.merge_commit_sha;
+            const now = new Date().toISOString().split('T')[0];
+
+            // Extract issue number from PR body
+            const match = prBody.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+
+            if (!match) {
+              console.log('No linked issue found in PR body. Skipping.');
+              return;
+            }
+
+            const issueNumber = parseInt(match[1]);
+
+            // Remove CR:In Progress, add CR:Done
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'CR:In Progress'
+              });
+            } catch (e) {}
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['CR:Done']
+            });
+
+            // Post comment on the issue with full details
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `✅ **Development Complete — PR Merged**\n\n| Field | Value |\n|-------|-------|\n| **PR** | #${prNumber} — ${prUrl} |\n| **Merged By** | @${actor} |\n| **Merge Date** | ${now} |\n| **Commit SHA** | \`${commitSha}\` |\n\nStatus changed to \`CR:Done\`. Awaiting deployment.`
+            });
