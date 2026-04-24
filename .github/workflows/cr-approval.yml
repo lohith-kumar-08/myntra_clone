@@ -19,9 +19,11 @@ jobs:
             const AUTHORIZED_USERS = ['lohith-kumar-08'];
             const CR_LABELS = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed', 'CR:Hold', 'CR:Rejected'];
             const FORWARD_ORDER = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed'];
+            const APPROVER_ONLY = ['CR:Approved', 'CR:Rejected', 'CR:Hold'];
 
             const actor = context.payload.sender.login;
             const label = context.payload.label.name;
+            const action = context.payload.action;
             const issueNumber = context.payload.issue.number;
             const issueTitle = context.payload.issue.title;
             const now = new Date().toISOString().split('T')[0];
@@ -29,110 +31,78 @@ jobs:
             // Only handle CR labels
             if (!CR_LABELS.includes(label)) return;
 
-            // ── Block unauthorized removal of CR:Approved, CR:Done, CR:Deployed ──
-            const protectedLabels = ['CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed'];
-            if (context.payload.action === 'unlabeled' && protectedLabels.includes(label)) {
-              if (!AUTHORIZED_USERS.includes(actor)) {
-                // Re-add the removed label
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  labels: [label]
-                });
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  body: `⛔ @${actor} you are not authorized to remove the \`${label}\` label.\n\nThe label has been restored.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
-                });
-                return;
-              }
-              // Authorized user removing a protected label — check it's not a backward transition
-              const newCurrentLabels = issueData.data.labels.map(l => l.name).filter(l => l !== label);
-              const newCRLabel = newCurrentLabels.find(l => CR_LABELS.includes(l));
-              const removedIndex = FORWARD_ORDER.indexOf(label);
-              const newLabelIndex = FORWARD_ORDER.indexOf(newCRLabel);
-              if (newCRLabel && newLabelIndex < removedIndex) {
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  labels: [label]
-                });
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  body: `⛔ Backward transition not allowed: cannot go from \`${label}\` to \`${newCRLabel}\`.\n\nStatus restored to \`${label}\`.\n\nTo pause a CR at any stage, use \`CR:Hold\`.`
-                });
-              }
-              return;
-            }
-
-            // Skip further processing for unlabeled events
-            if (context.payload.action === 'unlabeled') return;
-
-            // Get current issue labels
+            // Fetch current labels upfront
             const issueData = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber
             });
             const currentLabels = issueData.data.labels.map(l => l.name);
-            const previousCRLabel = currentLabels.find(l => CR_LABELS.includes(l) && l !== label) || 'CR:New';
 
-            // ── Authorization check (for Approved, Rejected, Hold only) ──
-            const restrictedLabels = ['CR:Approved', 'CR:Rejected', 'CR:Hold'];
-            if (restrictedLabels.includes(label) && !AUTHORIZED_USERS.includes(actor)) {
+            // ── Handle UNLABELED event — someone removed a label ──
+            if (action === 'unlabeled') {
+              // CR:New removal is fine (happens automatically on approval)
+              if (label === 'CR:New') return;
+
+              // Block removal of any other CR label by anyone
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [label]
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⛔ @${actor} Removing the \`${label}\` label directly is not allowed.\n\nUse the correct label to transition the CR status.\n\nAllowed flow: \`CR:New\` → \`CR:Approved\` → \`CR:In Progress\` → \`CR:Done\` → \`CR:Deployed\`\n\nTo pause: use \`CR:Hold\`. To cancel: use \`CR:Rejected\`.`
+              });
+              return;
+            }
+
+            // ── Handle LABELED event — someone added a label ──
+
+            // Get the previous CR status (before this label was added)
+            const previousCRLabel = currentLabels.find(l => CR_LABELS.includes(l) && l !== label);
+
+            // ── Authorization check — only approvers can add restricted labels ──
+            if (APPROVER_ONLY.includes(label) && !AUTHORIZED_USERS.includes(actor)) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
                 name: label
               });
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels: [previousCRLabel]
-              });
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⛔ @${actor} you are not authorized to perform this action.\n\nThe \`${label}\` label has been removed and status restored to \`${previousCRLabel}\`.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
+                body: `⛔ @${actor} you are not authorized to add the \`${label}\` label.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
               });
               return;
             }
 
-            // ── Block backward transitions ──
+            // ── Block ALL backward transitions (for everyone including approvers) ──
             const newIndex = FORWARD_ORDER.indexOf(label);
             const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
 
-            if (newIndex !== -1 && prevIndex !== -1 && newIndex < prevIndex && label !== 'CR:Hold') {
+            if (newIndex !== -1 && prevIndex !== -1 && newIndex < prevIndex) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
                 name: label
               });
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels: [previousCRLabel]
-              });
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⛔ Invalid status transition: \`${previousCRLabel}\` → \`${label}\` is not allowed.\n\nStatus restored to \`${previousCRLabel}\`.\n\nAllowed flow: CR:New → CR:Approved → CR:In Progress → CR:Done → CR:Deployed\n\nTo pause a CR at any stage, use \`CR:Hold\`.`
+                body: `⛔ @${actor} Backward transition \`${previousCRLabel}\` → \`${label}\` is not allowed for anyone.\n\nAllowed flow: \`CR:New\` → \`CR:Approved\` → \`CR:In Progress\` → \`CR:Done\` → \`CR:Deployed\`\n\nTo pause at any stage use \`CR:Hold\`.`
               });
               return;
             }
 
-            // ── Block re-approval if already approved ──
+            // ── Block re-approval ──
             if (label === 'CR:Approved') {
               const comments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
@@ -141,16 +111,22 @@ jobs:
               });
               const alreadyApproved = comments.data.some(c => c.body.includes('CR Approved') && c.body.includes('Approved By'));
               if (alreadyApproved) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label
+                });
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: issueNumber,
-                  body: `⛔ This CR is already approved. Re-approval is not allowed.\n\nIf you need to make further changes, please raise a new Change Request.`
+                  body: `⛔ This CR is already approved. Re-approval is not allowed.\n\nIf further changes are needed, raise a new Change Request.`
                 });
                 return;
               }
 
-              // Remove CR:New
+              // Valid approval — remove CR:New, post approval comment
               try {
                 await github.rest.issues.removeLabel({
                   owner: context.repo.owner,
@@ -168,23 +144,24 @@ jobs:
               });
             }
 
-            // ── CR:Hold — store previous status in comment ──
+            // ── CR:Hold ──
             else if (label === 'CR:Hold') {
-              // Remove previous CR label
               try {
-                await github.rest.issues.removeLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  name: previousCRLabel
-                });
+                if (previousCRLabel) {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: previousCRLabel
+                  });
+                }
               } catch (e) {}
 
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⏸️ **CR On Hold**\n\n| Field | Value |\n|-------|-------|\n| **Put On Hold By** | @${actor} |\n| **Date** | ${now} |\n| **Previous Status** | \`${previousCRLabel}\` |\n\nTo resume, add the label \`${previousCRLabel}\` back.`
+                body: `⏸️ **CR On Hold**\n\n| Field | Value |\n|-------|-------|\n| **Put On Hold By** | @${actor} |\n| **Date** | ${now} |\n| **Previous Status** | \`${previousCRLabel || 'CR:New'}\` |\n\nTo resume, add the label \`${previousCRLabel || 'CR:New'}\` back.`
               });
             }
 
