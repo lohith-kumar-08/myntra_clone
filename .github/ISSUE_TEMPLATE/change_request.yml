@@ -13,8 +13,6 @@ body:
     id: requested_by
     attributes:
       label: Requested By
-      description: Full name of the person requesting this change
-      placeholder: e.g. Lohith Kumar
     validations:
       required: true
 
@@ -22,12 +20,11 @@ body:
     id: source
     attributes:
       label: Source
-      description: How was this request received?
       options:
-        - Source:Internal
-        - Source:Email
-        - Source:WhatsApp
-        - Source:Call
+        - Internal
+        - Email
+        - WhatsApp
+        - Call
     validations:
       required: true
 
@@ -36,9 +33,9 @@ body:
     attributes:
       label: Type of Change
       options:
-        - Type:Bug
-        - Type:Enhancement
-        - Type:DataFix
+        - Bug
+        - Enhancement
+        - Data Fix
     validations:
       required: true
 
@@ -46,8 +43,6 @@ body:
     id: description
     attributes:
       label: Description
-      description: What needs to be changed and why?
-      placeholder: Describe the change in detail...
     validations:
       required: true
 
@@ -55,7 +50,14 @@ body:
     id: justification
     attributes:
       label: Business Justification
-      description: Why is this change needed? What problem does it solve?
-      placeholder: Business reason for this change...
+      placeholder: Why is this needed?
     validations:
       required: true
+
+
+  - type: input
+    id: deployment_date
+    attributes:
+      label: Target Deployment Date
+      placeholder: YYYY-MM-DD
+
