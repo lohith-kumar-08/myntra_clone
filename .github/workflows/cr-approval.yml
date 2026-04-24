@@ -82,11 +82,11 @@ jobs:
               return;
             }
 
-            // ── Block ALL backward transitions (for everyone including approvers) ──
+            // ── Block non-consecutive and backward transitions (for everyone) ──
             const newIndex = FORWARD_ORDER.indexOf(label);
             const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
 
-            if (newIndex !== -1 && prevIndex !== -1 && newIndex < prevIndex) {
+            if (newIndex !== -1 && prevIndex !== -1 && newIndex !== prevIndex + 1) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -97,7 +97,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⛔ @${actor} Backward transition \`${previousCRLabel}\` → \`${label}\` is not allowed for anyone.\n\nAllowed flow: \`CR:New\` → \`CR:Approved\` → \`CR:In Progress\` → \`CR:Done\` → \`CR:Deployed\`\n\nTo pause at any stage use \`CR:Hold\`.`
+                body: `⛔ @${actor} Invalid transition \`${previousCRLabel}\` → \`${label}\` is not allowed.\n\nYou can only move to the next step:\n- \`CR:New\` → \`CR:Approved\`\n- \`CR:Approved\` → \`CR:In Progress\`\n- \`CR:In Progress\` → \`CR:Done\`\n- \`CR:Done\` → \`CR:Deployed\`\n\nTo pause at any stage use \`CR:Hold\`.`
               });
               return;
             }
