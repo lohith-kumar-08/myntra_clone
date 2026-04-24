@@ -11,15 +11,14 @@ jobs:
       issues: write
 
     steps:
-      - name: Handle CR Approval or Rejection
-        if: |
-          github.event.label.name == 'CR:Approved' ||
-          github.event.label.name == 'CR:Rejected'
+      - name: Handle CR Label Changes
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const AUTHORIZED_USERS = ['lohith-kumar-08'];
+            const CR_LABELS = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed', 'CR:Hold', 'CR:Rejected'];
+            const FORWARD_ORDER = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed'];
 
             const actor = context.payload.sender.login;
             const label = context.payload.label.name;
@@ -27,59 +26,87 @@ jobs:
             const issueTitle = context.payload.issue.title;
             const now = new Date().toISOString().split('T')[0];
 
-            if (!AUTHORIZED_USERS.includes(actor)) {
-              // Get all current labels before removing the unauthorized one
-              const issueData = await github.rest.issues.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber
-              });
-              const currentLabels = issueData.data.labels.map(l => l.name);
+            // Only handle CR labels
+            if (!CR_LABELS.includes(label)) return;
 
-              // Remove the unauthorized label
+            // Get current issue labels
+            const issueData = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+            const currentLabels = issueData.data.labels.map(l => l.name);
+            const previousCRLabel = currentLabels.find(l => CR_LABELS.includes(l) && l !== label) || 'CR:New';
+
+            // ── Authorization check (for Approved, Rejected, Hold only) ──
+            const restrictedLabels = ['CR:Approved', 'CR:Rejected', 'CR:Hold'];
+            if (restrictedLabels.includes(label) && !AUTHORIZED_USERS.includes(actor)) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
                 name: label
               });
-
-              // Restore previous CR status label
-              const crStatusLabels = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed', 'CR:Rejected'];
-              const previousLabel = currentLabels.find(l => crStatusLabels.includes(l) && l !== label);
-              const restoreLabel = previousLabel || 'CR:New';
-
-              // Always explicitly re-add the previous label to ensure it is restored
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                labels: [restoreLabel]
+                labels: [previousCRLabel]
               });
-
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `⛔ @${actor} you are not authorized to approve or reject Change Requests.\n\nThe \`${label}\` label has been removed and status restored to \`${restoreLabel}\`.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
+                body: `⛔ @${actor} you are not authorized to perform this action.\n\nThe \`${label}\` label has been removed and status restored to \`${previousCRLabel}\`.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
               });
+              return;
+            }
 
-            } else if (label === 'CR:Approved') {
-              // Check if already approved before — look for existing approval comment
+            // ── Block backward transitions ──
+            const newIndex = FORWARD_ORDER.indexOf(label);
+            const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
+
+            if (newIndex !== -1 && prevIndex !== -1 && newIndex < prevIndex && label !== 'CR:Hold') {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label
+              });
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [previousCRLabel]
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⛔ Invalid status transition: \`${previousCRLabel}\` → \`${label}\` is not allowed.\n\nStatus restored to \`${previousCRLabel}\`.\n\nAllowed flow: CR:New → CR:Approved → CR:In Progress → CR:Done → CR:Deployed\n\nTo pause a CR at any stage, use \`CR:Hold\`.`
+              });
+              return;
+            }
+
+            // ── Block re-approval if already approved ──
+            if (label === 'CR:Approved') {
               const comments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber
               });
               const alreadyApproved = comments.data.some(c => c.body.includes('CR Approved') && c.body.includes('Approved By'));
-
               if (alreadyApproved) {
-                // Already approved — just remove the duplicate label addition silently
-                console.log('CR already approved. Skipping duplicate approval comment.');
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⛔ This CR is already approved. Re-approval is not allowed.\n\nIf you need to make further changes, please raise a new Change Request.`
+                });
                 return;
               }
 
-              // Remove CR:New label
+              // Remove CR:New
               try {
                 await github.rest.issues.removeLabel({
                   owner: context.repo.owner,
@@ -95,11 +122,31 @@ jobs:
                 issue_number: issueNumber,
                 body: `✅ **CR Approved**\n\n| Field | Value |\n|-------|-------|\n| **Approved By** | @${actor} |\n| **Approval Date** | ${now} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request is approved for development. A PR must be raised linking to this issue using \`Closes #${issueNumber}\`.`
               });
+            }
 
-            } else if (label === 'CR:Rejected') {
-              // Authorized rejection
-              // Remove CR:New and CR:Approved labels if present
-              for (const l of ['CR:New', 'CR:Approved', 'CR:In Progress']) {
+            // ── CR:Hold — store previous status in comment ──
+            else if (label === 'CR:Hold') {
+              // Remove previous CR label
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: previousCRLabel
+                });
+              } catch (e) {}
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⏸️ **CR On Hold**\n\n| Field | Value |\n|-------|-------|\n| **Put On Hold By** | @${actor} |\n| **Date** | ${now} |\n| **Previous Status** | \`${previousCRLabel}\` |\n\nTo resume, add the label \`${previousCRLabel}\` back.`
+              });
+            }
+
+            // ── CR:Rejected ──
+            else if (label === 'CR:Rejected') {
+              for (const l of ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Hold']) {
                 try {
                   await github.rest.issues.removeLabel({
                     owner: context.repo.owner,
@@ -109,15 +156,12 @@ jobs:
                   });
                 } catch (e) {}
               }
-
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
                 body: `❌ **CR Rejected**\n\n| Field | Value |\n|-------|-------|\n| **Rejected By** | @${actor} |\n| **Rejection Date** | ${now} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request has been rejected. No development should proceed.`
               });
-
-              // Close the issue
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
