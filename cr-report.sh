@@ -33,8 +33,8 @@ echo "$ISSUES" | while read -r issue; do
   # Extract fields from comments
   COMMENTS=$(gh issue view $NUMBER --repo $REPO --json comments -q '.comments[].body')
 
-  APPROVED_BY=$(echo "$COMMENTS" | grep -A2 "CR Approved" | grep "Approved By" | sed 's/.*@//' | tr -d '|' | xargs)
-  APPROVAL_DATE=$(echo "$COMMENTS" | grep -A3 "CR Approved" | grep "Approval Date" | awk '{print $NF}' | tr -d '|' | xargs)
+  APPROVED_BY=$(echo "$COMMENTS" | grep "Approved By" | sed 's/.*@//' | tr -d '|' | xargs)
+  APPROVAL_DATE=$(echo "$COMMENTS" | grep "Approval Date" | awk '{print $NF}' | tr -d '|' | xargs)
   PR=$(echo "$COMMENTS" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
   COMMIT_SHA=$(echo "$COMMENTS" | grep "Commit SHA" | grep -oE '[a-f0-9]{40}')
   MERGED_DATE=$(echo "$COMMENTS" | grep "Merge Date" | awk '{print $NF}' | tr -d '|' | xargs)

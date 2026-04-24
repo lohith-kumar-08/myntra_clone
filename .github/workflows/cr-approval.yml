@@ -65,7 +65,20 @@ jobs:
               });
 
             } else if (label === 'CR:Approved') {
-              // Authorized approval
+              // Check if already approved before — look for existing approval comment
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              const alreadyApproved = comments.data.some(c => c.body.includes('CR Approved') && c.body.includes('Approved By'));
+
+              if (alreadyApproved) {
+                // Already approved — just remove the duplicate label addition silently
+                console.log('CR already approved. Skipping duplicate approval comment.');
+                return;
+              }
+
               // Remove CR:New label
               try {
                 await github.rest.issues.removeLabel({
