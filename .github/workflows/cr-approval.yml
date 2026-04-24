@@ -1,0 +1,93 @@
+name: CR Approval Control
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  handle-cr-label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Handle CR Approval or Rejection
+        if: |
+          github.event.label.name == 'CR:Approved' ||
+          github.event.label.name == 'CR:Rejected'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const AUTHORIZED_USERS = ['lohith-kumar-08'];
+
+            const actor = context.payload.sender.login;
+            const label = context.payload.label.name;
+            const issueNumber = context.payload.issue.number;
+            const issueTitle = context.payload.issue.title;
+            const now = new Date().toISOString().split('T')[0];
+
+            if (!AUTHORIZED_USERS.includes(actor)) {
+              // Unauthorized — remove label and warn
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⛔ @${actor} you are not authorized to approve or reject Change Requests.\n\nThe \`${label}\` label has been removed.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
+              });
+
+            } else if (label === 'CR:Approved') {
+              // Authorized approval
+              // Remove CR:New label
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: 'CR:New'
+                });
+              } catch (e) {}
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ **CR Approved**\n\n| Field | Value |\n|-------|-------|\n| **Approved By** | @${actor} |\n| **Approval Date** | ${now} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request is approved for development. A PR must be raised linking to this issue using \`Closes #${issueNumber}\`.`
+              });
+
+            } else if (label === 'CR:Rejected') {
+              // Authorized rejection
+              // Remove CR:New and CR:Approved labels if present
+              for (const l of ['CR:New', 'CR:Approved', 'CR:In Progress']) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: l
+                  });
+                } catch (e) {}
+              }
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `❌ **CR Rejected**\n\n| Field | Value |\n|-------|-------|\n| **Rejected By** | @${actor} |\n| **Rejection Date** | ${now} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request has been rejected. No development should proceed.`
+              });
+
+              // Close the issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: 'closed'
+              });
+            }
