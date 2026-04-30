@@ -1,3 +1,2 @@
-## Change Request Reference
 Closes #
 
