@@ -5,49 +5,49 @@ import { BsBagPlusFill } from "react-icons/bs";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 
-const Header=()=>{
+const Header = () => {
 
-    const bag=useSelector(store=>store.bag)
+    const bag = useSelector(store => store.bag)
     return <>
-    <header>
-        {console.log(bag)}
-        <div className="logo_container">
-            <Link to=""><img className="myntra_home" src="images/myntra_logo.webp" alt="Myntra Home"/></Link>
-        </div>
-        <nav className="nav_bar">
-            <Link href="#">TEST2</Link>
-            <Link href="#">TEST2</Link>
-            <Link href="#">Kids</Link>
-            <Link href="#">Home & Living</Link>
-            <Link href="#">Beauty</Link>
-            <Link href="#">Studio <sup>New</sup></Link>
-        </nav>
-        <div className="search_bar">
-            <span className="material-symbols-outlined search_icon">search</span>
-            <input className="search_input" placeholder="Search for products, brands and more"/>
-        </div>
-        <div className="action_bar">
-            <div className="action_container">
-            <CgProfile />
-                <span className="action_name">Profile</span>
+        <header>
+            {console.log(bag)}
+            <div className="logo_container">
+                <Link to=""><img className="myntra_home" src="images/myntra_logo.webp" alt="Myntra Home" /></Link>
             </div>
-
-            <div className="action_container">
-            <FaRegHeart />
-                <span className="action_name">Wishlist</span>
+            <nav className="nav_bar">
+                <Link href="#">TEST3</Link>
+                <Link href="#">TEST3</Link>
+                <Link href="#">Kids</Link>
+                <Link href="#">Home & Living</Link>
+                <Link href="#">Beauty</Link>
+                <Link href="#">Studio <sup>New</sup></Link>
+            </nav>
+            <div className="search_bar">
+                <span className="material-symbols-outlined search_icon">search</span>
+                <input className="search_input" placeholder="Search for products, brands and more" />
             </div>
+            <div className="action_bar">
+                <div className="action_container">
+                    <CgProfile />
+                    <span className="action_name">Profile</span>
+                </div>
 
-            <Link className="action_container" to="/bag">
-            <BsBagPlusFill />
-                <span className="action_name">Bag</span>
-                <span className="bag-item-count">{bag.length}</span>
-            </Link>
+                <div className="action_container">
+                    <FaRegHeart />
+                    <span className="action_name">Wishlist</span>
+                </div>
 
-            <Link className="action_container" to="/cr-report">
-                <span className="action_name" style={{color:"#2EA44F", fontWeight:"600"}}>CR Report</span>
-            </Link>
-        </div>
-    </header>
+                <Link className="action_container" to="/bag">
+                    <BsBagPlusFill />
+                    <span className="action_name">Bag</span>
+                    <span className="bag-item-count">{bag.length}</span>
+                </Link>
+
+                <Link className="action_container" to="/cr-report">
+                    <span className="action_name" style={{ color: "#2EA44F", fontWeight: "600" }}>CR Report</span>
+                </Link>
+            </div>
+        </header>
     </>
 }
 
