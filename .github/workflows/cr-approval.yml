@@ -44,6 +44,9 @@ jobs:
               // CR:New removal is fine (happens automatically on approval)
               if (label === 'CR:New') return;
 
+              // If the bot removed the label (e.g. during validation checks), don't restore it
+              if (actor === 'github-actions[bot]') return;
+
               // Block removal of any other CR label by anyone
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
@@ -82,24 +85,23 @@ jobs:
               return;
             }
 
-            // ── Block non-consecutive and backward transitions (for everyone) ──
-            const newIndex = FORWARD_ORDER.indexOf(label);
-            const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
-
-            if (newIndex !== -1 && prevIndex !== -1 && newIndex !== prevIndex + 1) {
-              await github.rest.issues.removeLabel({
+            // ── Block setting back to CR:New once already approved ──
+            if (label === 'CR:New') {
+              const newCheckComments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: label
+                issue_number: issueNumber
               });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `⛔ @${actor} Invalid transition \`${previousCRLabel}\` → \`${label}\` is not allowed.\n\nYou can only move to the next step:\n- \`CR:New\` → \`CR:Approved\`\n- \`CR:Approved\` → \`CR:In Progress\`\n- \`CR:In Progress\` → \`CR:Done\`\n- \`CR:Done\` → \`CR:Deployed\`\n\nTo pause at any stage use \`CR:Hold\`.`
-              });
-              return;
+              const wasApproved = newCheckComments.data.some(c => c.body.includes('CR Approved') && c.body.includes('Approved By'));
+              if (wasApproved) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label
+                });
+                return;
+              }
             }
 
             // ── Block re-approval ──
