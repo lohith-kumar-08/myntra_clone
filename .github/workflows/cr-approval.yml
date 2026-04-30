@@ -65,6 +65,17 @@ jobs:
             // Get the previous CR status (before this label was added)
             const previousCRLabel = currentLabels.find(l => CR_LABELS.includes(l) && l !== label);
 
+            // ── Block any changes once CR is Deployed ──
+            if (previousCRLabel === 'CR:Deployed') {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label
+              });
+              return;
+            }
+
             // ── Block setting back to CR:New once already approved ──
             if (label === 'CR:New') {
               const newCheckComments = await github.rest.issues.listComments({
