@@ -86,6 +86,23 @@ jobs:
             const newIndex = FORWARD_ORDER.indexOf(label);
             const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
 
+            // Block adding any CR label other than CR:New when no CR label exists yet
+            if (newIndex !== -1 && !previousCRLabel && label !== 'CR:New') {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `⛔ @${actor} This issue has no CR status yet. It must start with \`CR:New\` before moving to \`${label}\`.`
+              });
+              return;
+            }
+
             if (newIndex !== -1 && prevIndex !== -1 && newIndex !== prevIndex + 1) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
@@ -126,6 +143,29 @@ jobs:
                 return;
               }
 
+              // ── Require "Approved By: <name>" comment before approving ──
+              const approvedByComment = [...comments.data].reverse().find(c =>
+                /approved by\s*:\s*.+/i.test(c.body) && !c.body.includes('CR Approved')
+              );
+              if (!approvedByComment) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⛔ @${actor} Cannot approve without specifying who approved this CR.\n\nPlease add a comment in this format first:\n\n\`\`\`\nApproved By: Manager Name\n\`\`\`\n\nThen add the \`CR:Approved\` label again.`
+                });
+                return;
+              }
+
+              const approverMatch = approvedByComment.body.match(/approved by\s*:\s*(.+)/i);
+              const approverName = approverMatch ? approverMatch[1].trim() : 'Unknown';
+
               // Valid approval — remove CR:New, post approval comment
               try {
                 await github.rest.issues.removeLabel({
@@ -140,7 +180,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `✅ **CR Approved**\n\n| Field | Value |\n|-------|-------|\n| **Approved By** | @${actor} |\n| **Approval Date** | ${now} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request is approved for development. A PR must be raised linking to this issue using \`Closes #${issueNumber}\`.`
+                body: `✅ **CR Approved**\n\n| Field | Value |\n|-------|-------|\n| **Approved By** | ${approverName} |\n| **Approval Date** | ${now} |\n| **Approved On GitHub By** | @${actor} |\n| **Issue** | ${issueTitle} |\n\nThis Change Request is approved for development. A PR must be raised linking to this issue using \`Closes #${issueNumber}\`.`
               });
             }
 
