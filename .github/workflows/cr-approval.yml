@@ -86,23 +86,6 @@ jobs:
             const newIndex = FORWARD_ORDER.indexOf(label);
             const prevIndex = FORWARD_ORDER.indexOf(previousCRLabel);
 
-            // Block adding any CR label other than CR:New when no CR label exists yet
-            if (newIndex !== -1 && !previousCRLabel && label !== 'CR:New') {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: label
-              });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `⛔ @${actor} This issue has no CR status yet. It must start with \`CR:New\` before moving to \`${label}\`.`
-              });
-              return;
-            }
-
             if (newIndex !== -1 && prevIndex !== -1 && newIndex !== prevIndex + 1) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
