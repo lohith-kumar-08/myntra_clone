@@ -16,10 +16,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const AUTHORIZED_USERS = ['lohith-kumar-08'];
             const CR_LABELS = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed', 'CR:Hold', 'CR:Rejected'];
-            const FORWARD_ORDER = ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Done', 'CR:Deployed'];
-            const APPROVER_ONLY = ['CR:Approved', 'CR:Rejected', 'CR:Hold'];
 
             const actor = context.payload.sender.login;
             const label = context.payload.label.name;
@@ -67,23 +64,6 @@ jobs:
 
             // Get the previous CR status (before this label was added)
             const previousCRLabel = currentLabels.find(l => CR_LABELS.includes(l) && l !== label);
-
-            // ── Authorization check — only approvers can add restricted labels ──
-            if (APPROVER_ONLY.includes(label) && !AUTHORIZED_USERS.includes(actor)) {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: label
-              });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `⛔ @${actor} you are not authorized to add the \`${label}\` label.\n\nAuthorized approvers: ${AUTHORIZED_USERS.map(u => '@' + u).join(', ')}`
-              });
-              return;
-            }
 
             // ── Block setting back to CR:New once already approved ──
             if (label === 'CR:New') {
@@ -208,15 +188,14 @@ jobs:
 
             // ── CR:Rejected ──
             if (label === 'CR:Rejected') {
-              for (const l of ['CR:New', 'CR:Approved', 'CR:In Progress', 'CR:Hold']) {
-                try {
-                  await github.rest.issues.removeLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber,
-                    name: l
-                  });
-                } catch (e) {}
+              if (['CR:Done', 'CR:Deployed'].includes(previousCRLabel)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label
+                });
+                return;
               }
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
