@@ -128,7 +128,9 @@ jobs:
 
               // ── Require "Approved By: <name>" comment before approving ──
               const approvedByComment = [...comments.data].reverse().find(c =>
-                /approved by\s*:\s*.+/i.test(c.body) && !c.body.includes('CR Approved')
+                /approved by\s*:\s*.+/i.test(c.body) &&
+                !c.body.includes('CR Approved') &&
+                c.user.type !== 'Bot'
               );
               if (!approvedByComment) {
                 await github.rest.issues.removeLabel({
