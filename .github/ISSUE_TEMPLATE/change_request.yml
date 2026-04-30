@@ -43,13 +43,6 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: justification
-    attributes:
-      label: Business Justification
-      placeholder: Why is this needed?
-    validations:
-      required: true
 
 
 
