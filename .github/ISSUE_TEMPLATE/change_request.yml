@@ -40,7 +40,6 @@ body:
     id: email_subject
     attributes:
       label: Email Subject
-      placeholder: Paste the email subject line here (if request came via email)
     validations:
       required: true
 
