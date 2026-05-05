@@ -26,10 +26,10 @@ jobs:
             const now = new Date().toISOString().split('T')[0];
 
             // Extract issue number from PR body — supports Closes #N, Fixes #N, Resolves #N
-            const match = prBody.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+            const match = prBody.match(/#\s*(\d+)/);
 
             if (!match) {
-              console.log('No linked issue found in PR body. Skipping.');
+              core.setFailed('No CR issue number found in the PR body. Add "Closes #<issue-number>" before raising a PR.');
               return;
             }
 
