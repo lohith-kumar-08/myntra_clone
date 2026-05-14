@@ -15,8 +15,8 @@ const Header = () => {
                 <Link to=""><img className="myntra_home" src="images/myntra_logo.webp" alt="Myntra Home" /></Link>
             </div>
             <nav className="nav_bar">
-                <Link href="#">TEST4</Link>
-                <Link href="#">TEST5</Link>
+                <Link href="#">TEST6</Link>
+                <Link href="#">TEST6</Link>
                 <Link href="#">Kids</Link>
                 <Link href="#">Home & Living</Link>
                 <Link href="#">Beauty</Link>
